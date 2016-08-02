@@ -14,6 +14,26 @@ var HtmlWebpackPlugin = require('html-webpack-plugin');
 var CaseSensitivePathsPlugin = require('case-sensitive-paths-webpack-plugin');
 var paths = require('./paths');
 
+// We don't watch node_modules by default because it's too slow.
+// However if a dependency is missing, and the user npm installs it,
+// we want to rebuild the app and disregard the cached "module not found".
+// This custom plugin does the job.
+// Relevant issue: https://github.com/facebookincubator/create-react-app/issues/186
+function RebuildOnPackageJSONChangePlugin(packageJsonPath) {
+  this.packageJsonPath = packageJsonPath;
+}
+RebuildOnPackageJSONChangePlugin.prototype.apply = function (compiler) {
+  compiler.plugin('emit', (compilation, callback) => {
+    compilation.fileDependencies.push(this.packageJsonPath);
+    callback();
+  });
+  compiler.plugin('done', stats => {
+    if (stats.compilation.missingDependencies.length) {
+      compiler.inputFileSystem.purge();
+    }
+  });
+}
+
 module.exports = {
   devtool: 'eval',
   entry: [
@@ -107,6 +127,7 @@ module.exports = {
     new webpack.DefinePlugin({ 'process.env.NODE_ENV': '"development"' }),
     // Note: only CSS is currently hot reloaded
     new webpack.HotModuleReplacementPlugin(),
-    new CaseSensitivePathsPlugin()
+    new CaseSensitivePathsPlugin(),
+    new RebuildOnPackageJSONChangePlugin(paths.appPackageJson)
   ]
 };
